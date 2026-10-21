@@ -201,12 +201,23 @@ body {
 }
 
 .app-tabbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
   --f7-toolbar-height: 64px;
 }
 
+.page:not(.page-current) .app-tabbar {
+  display: none;
+}
+
 .app-tabbar .toolbar-inner {
+  position: absolute;
+  left: 50%;
+  width: 100%;
   max-width: 800px;
-  margin: 0 auto;
+  transform: translateX(-50%);
 }
 
 .app-tabbar .link {
