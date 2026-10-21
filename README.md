@@ -1,5 +1,20 @@
-# Vue 3 + Vite
+# TaskFlow
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Навчальний PWA-застосунок для огляду завдань на Vue 3, Framework7 і Vite.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+## Запуск
+
+```sh
+npm install
+npm run dev
+```
+
+## Збірка
+
+```sh
+npm run build
+npm run preview
+```
+
+Застосунок містить головну сторінку, перелік завдань і сторінку з інформацією
+про проєкт. Нижня панель переходить між ними за маршрутами Framework7.

@@ -14,10 +14,10 @@ export default defineConfig({
     },
 
     manifest: {
-      name: 'my-app',
-      short_name: 'my-app',
-      description: 'my-app',
-      theme_color: '#ffffff',
+      name: 'TaskFlow',
+      short_name: 'TaskFlow',
+      description: 'Прогресивний вебзастосунок для організації завдань',
+      theme_color: '#2563eb',
     },
 
     workbox: {
