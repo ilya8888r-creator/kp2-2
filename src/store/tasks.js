@@ -1,15 +1,19 @@
 import { reactive } from 'vue';
 import initialTasks from '../data/tasks.js';
 
-const allowedStatuses = new Set(['todo', 'progress', 'done']);
-const allowedPriorities = new Set(['low', 'medium', 'high']);
+const allowedStatuses = ['todo', 'progress', 'done'];
+const allowedPriorities = ['low', 'medium', 'high'];
 
 export const taskState = reactive({
   tasks: initialTasks.map((task) => ({ ...task })),
 });
 
 function isValidDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (typeof value !== 'string' || !value) {
+    return true;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
   }
 
@@ -19,76 +23,87 @@ function isValidDate(value) {
   return !Number.isNaN(date.getTime()) && normalizedDate === value;
 }
 
-function normalizeTaskData(data) {
-  if (!data || typeof data !== 'object') return null;
+function normalizeValues(values) {
+  if (!values || typeof values !== 'object') {
+    return null;
+  }
 
-  const title = typeof data.title === 'string' ? data.title.trim() : '';
-  const description = typeof data.description === 'string'
-    ? data.description.trim()
-    : '';
-
-  if (title.length < 3 || title.length > 80) return null;
-  if (description.length > 300) return null;
-  if (!allowedStatuses.has(data.status)) return null;
-  if (!allowedPriorities.has(data.priority)) return null;
-  if (!isValidDate(data.dueDate)) return null;
+  const title = String(values.title ?? '').trim();
+  const description = String(values.description ?? '').trim();
+  const status = allowedStatuses.includes(values.status) ? values.status : 'todo';
+  const priority = allowedPriorities.includes(values.priority) ? values.priority : 'medium';
+  const dueDate = typeof values.dueDate === 'string' ? values.dueDate.trim() : '';
 
   return {
     title,
     description,
-    status: data.status,
-    priority: data.priority,
-    dueDate: data.dueDate,
+    status,
+    priority,
+    dueDate,
   };
 }
 
 function findTask(id) {
-  const task = taskState.tasks.find((item) => item.id === id);
-
-  if (!task) {
-    throw new RangeError(`Завдання з ідентифікатором ${id} не знайдено.`);
-  }
-
-  return task;
+  return taskState.tasks.find((task) => task.id === Number(id));
 }
 
-export function addTask(data) {
-  const normalized = normalizeTaskData(data);
-  if (!normalized) return null;
+export function addTask(values) {
+  const taskValues = normalizeValues(values);
+  if (!taskValues) return null;
 
-  const nextId = taskState.tasks.reduce(
-    (maxId, task) => Math.max(maxId, task.id),
-    0,
-  ) + 1;
-  const newTask = { id: nextId, ...normalized };
+  if (taskValues.title.length < 3 || taskValues.title.length > 80) return null;
+  if (taskValues.description.length > 500) return null;
+  if (!isValidDate(taskValues.dueDate)) return null;
 
-  taskState.tasks.push(newTask);
+  const nextId = taskState.tasks.reduce((maxId, task) => Math.max(maxId, task.id), 0) + 1;
+  const newTask = { id: nextId, ...taskValues };
+
+  taskState.tasks.unshift(newTask);
   return newTask;
 }
 
-export function updateTask({ id, ...data }) {
-  const normalized = normalizeTaskData(data);
-  if (!normalized) return null;
+export function updateTask(values) {
+  if (!values || typeof values !== 'object') return null;
 
-  const task = taskState.tasks.find((item) => item.id === id);
+  const { id, ...taskData } = values;
+  const taskValues = normalizeValues(taskData);
+  if (!taskValues) return null;
+
+  const task = findTask(id);
   if (!task) return null;
 
-  Object.assign(task, normalized);
+  if (taskValues.title.length < 3 || taskValues.title.length > 80) return null;
+  if (taskValues.description.length > 500) return null;
+  if (!isValidDate(taskValues.dueDate)) return null;
+
+  Object.assign(task, taskValues);
   return task;
 }
 
 export function setTaskStatus({ id, status }) {
-  if (!allowedStatuses.has(status)) {
-    throw new TypeError(`Непідтримуваний статус завдання: ${status}.`);
-  }
+  if (!allowedStatuses.includes(status)) return false;
 
-  findTask(id).status = status;
+  const task = findTask(id);
+  if (!task) return false;
+
+  task.status = status;
+  return true;
 }
 
 export function setTaskPriority({ id, priority }) {
-  if (!allowedPriorities.has(priority)) {
-    throw new TypeError(`Непідтримуваний пріоритет завдання: ${priority}.`);
-  }
+  if (!allowedPriorities.includes(priority)) return false;
 
-  findTask(id).priority = priority;
+  const task = findTask(id);
+  if (!task) return false;
+
+  task.priority = priority;
+  return true;
+}
+
+export function deleteTask(id) {
+  const index = taskState.tasks.findIndex((task) => task.id === Number(id));
+  if (index === -1) return false;
+
+  taskState.tasks.splice(index, 1);
+  return true;
 }
