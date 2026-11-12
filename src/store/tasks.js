@@ -1,12 +1,10 @@
-import { reactive } from 'vue';
+import { defineStore } from 'pinia';
 import initialTasks from '../data/tasks.js';
+import { useProjectsStore } from './projects.js';
 
 const allowedStatuses = ['todo', 'progress', 'done'];
 const allowedPriorities = ['low', 'medium', 'high'];
-
-export const taskState = reactive({
-  tasks: initialTasks.map((task) => ({ ...task })),
-});
+const priorityWeight = { high: 3, medium: 2, low: 1 };
 
 function isValidDate(value) {
   if (typeof value !== 'string' || !value) {
@@ -23,7 +21,7 @@ function isValidDate(value) {
   return !Number.isNaN(date.getTime()) && normalizedDate === value;
 }
 
-function normalizeValues(values) {
+function normalizeValues(values, projects) {
   if (!values || typeof values !== 'object') {
     return null;
   }
@@ -33,77 +31,163 @@ function normalizeValues(values) {
   const status = allowedStatuses.includes(values.status) ? values.status : 'todo';
   const priority = allowedPriorities.includes(values.priority) ? values.priority : 'medium';
   const dueDate = typeof values.dueDate === 'string' ? values.dueDate.trim() : '';
+  const requestedProject = String(values.projectId ?? 'general');
+  const projectId = projects.some((project) => project.id === requestedProject)
+    ? requestedProject
+    : null;
 
-  return {
-    title,
-    description,
-    status,
-    priority,
-    dueDate,
-  };
+  if (!projectId) return null;
+  if (title.length < 3 || title.length > 80) return null;
+  if (description.length > 500) return null;
+  if (!isValidDate(dueDate)) return null;
+
+  return { title, description, status, priority, dueDate, projectId };
 }
 
-function findTask(id) {
-  return taskState.tasks.find((task) => task.id === Number(id));
-}
+export const useTasksStore = defineStore('tasks', {
+  state: () => ({
+    tasks: initialTasks.map((task) => ({
+      ...task,
+      projectId: task.projectId ?? 'general',
+    })),
+    searchText: '',
+    selectedStatus: 'all',
+    selectedPriority: 'all',
+    selectedProject: 'all',
+    sortOrder: 'newest',
+    onlyWithoutDueDate: false,
+  }),
 
-export function addTask(values) {
-  const taskValues = normalizeValues(values);
-  if (!taskValues) return null;
+  getters: {
+    totalTasks: (state) => state.tasks.length,
+    completedTasks: (state) => state.tasks.filter((task) => task.status === 'done').length,
+    progressTasks: (state) => state.tasks.filter((task) => task.status === 'progress').length,
+    activeTasks: (state) => {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
 
-  if (taskValues.title.length < 3 || taskValues.title.length > 80) return null;
-  if (taskValues.description.length > 500) return null;
-  if (!isValidDate(taskValues.dueDate)) return null;
+      return state.tasks
+        .filter((task) => task.status !== 'done')
+        .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.id - a.id)
+        .slice(0, 3);
+    },
+    visibleTasks: (state) => {
+      const term = state.searchText.trim().toLocaleLowerCase('uk-UA');
+      const filtered = state.tasks.filter((task) => {
+        const preview = `${task.title} ${task.description ?? ''}`.toLocaleLowerCase('uk-UA');
 
-  const nextId = taskState.tasks.reduce((maxId, task) => Math.max(maxId, task.id), 0) + 1;
-  const newTask = { id: nextId, ...taskValues };
+        return (!term || preview.includes(term))
+          && (state.selectedStatus === 'all' || task.status === state.selectedStatus)
+          && (state.selectedPriority === 'all' || task.priority === state.selectedPriority)
+          && (state.selectedProject === 'all' || task.projectId === state.selectedProject)
+          && (!state.onlyWithoutDueDate || !task.dueDate);
+      });
 
-  taskState.tasks.unshift(newTask);
-  return newTask;
-}
+      return filtered.sort((a, b) => {
+        if (state.sortOrder === 'title') {
+          return a.title.localeCompare(b.title, 'uk-UA') || a.id - b.id;
+        }
 
-export function updateTask(values) {
-  if (!values || typeof values !== 'object') return null;
+        if (state.sortOrder === 'priority') {
+          return priorityWeight[b.priority] - priorityWeight[a.priority] || b.id - a.id;
+        }
 
-  const { id, ...taskData } = values;
-  const taskValues = normalizeValues(taskData);
-  if (!taskValues) return null;
+        if (state.sortOrder === 'dueDate') {
+          const first = a.dueDate || '9999-12-31';
+          const second = b.dueDate || '9999-12-31';
+          return first.localeCompare(second) || b.id - a.id;
+        }
 
-  const task = findTask(id);
-  if (!task) return null;
+        return b.id - a.id;
+      });
+    },
+  },
 
-  if (taskValues.title.length < 3 || taskValues.title.length > 80) return null;
-  if (taskValues.description.length > 500) return null;
-  if (!isValidDate(taskValues.dueDate)) return null;
+  actions: {
+    addTask(values) {
+      const projects = useProjectsStore();
+      const taskValues = normalizeValues(values, projects.projects);
+      if (!taskValues) return null;
 
-  Object.assign(task, taskValues);
-  return task;
-}
+      const nextId = this.tasks.reduce((maxId, task) => Math.max(maxId, task.id), 0) + 1;
+      const task = { id: nextId, ...taskValues };
+      this.tasks.unshift(task);
+      return task;
+    },
 
-export function setTaskStatus({ id, status }) {
-  if (!allowedStatuses.includes(status)) return false;
+    updateTask(values) {
+      if (!values || typeof values !== 'object') return null;
 
-  const task = findTask(id);
-  if (!task) return false;
+      const { id, ...taskData } = values;
+      const projects = useProjectsStore();
+      const taskValues = normalizeValues(taskData, projects.projects);
+      if (!taskValues) return null;
 
-  task.status = status;
-  return true;
-}
+      const task = this.tasks.find((item) => item.id === Number(id));
+      if (!task) return null;
 
-export function setTaskPriority({ id, priority }) {
-  if (!allowedPriorities.includes(priority)) return false;
+      Object.assign(task, taskValues);
+      return task;
+    },
 
-  const task = findTask(id);
-  if (!task) return false;
+    setTaskStatus({ id, status }) {
+      if (!allowedStatuses.includes(status)) return false;
 
-  task.priority = priority;
-  return true;
-}
+      const task = this.tasks.find((item) => item.id === Number(id));
+      if (!task) return false;
 
-export function deleteTask(id) {
-  const index = taskState.tasks.findIndex((task) => task.id === Number(id));
-  if (index === -1) return false;
+      task.status = status;
+      return true;
+    },
 
-  taskState.tasks.splice(index, 1);
-  return true;
-}
+    setTaskPriority({ id, priority }) {
+      if (!allowedPriorities.includes(priority)) return false;
+
+      const task = this.tasks.find((item) => item.id === Number(id));
+      if (!task) return false;
+
+      task.priority = priority;
+      return true;
+    },
+
+    deleteTask(id) {
+      const index = this.tasks.findIndex((task) => task.id === Number(id));
+      if (index === -1) return false;
+
+      this.tasks.splice(index, 1);
+      return true;
+    },
+
+    setProjectFilter(projectId) {
+      const projects = useProjectsStore();
+      const isAvailable = projectId === 'all'
+        || projects.projects.some((project) => project.id === projectId);
+
+      if (!isAvailable) return false;
+      this.selectedProject = projectId;
+      return true;
+    },
+
+    moveProjectTasksToProgress(projectId) {
+      const projects = useProjectsStore();
+      if (!projects.projects.some((project) => project.id === projectId)) return 0;
+
+      let updatedCount = 0;
+      this.tasks.forEach((task) => {
+        if (task.projectId === projectId && task.status !== 'progress') {
+          task.status = 'progress';
+          updatedCount += 1;
+        }
+      });
+      return updatedCount;
+    },
+
+    resetFilters() {
+      this.searchText = '';
+      this.selectedStatus = 'all';
+      this.selectedPriority = 'all';
+      this.selectedProject = 'all';
+      this.sortOrder = 'newest';
+      this.onlyWithoutDueDate = false;
+    },
+  },
+});

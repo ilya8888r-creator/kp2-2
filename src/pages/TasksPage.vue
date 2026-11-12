@@ -1,73 +1,48 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import AppTabbar from '../components/AppTabbar.vue';
 import TaskCard from '../components/TaskCard.vue';
 import TaskForm from '../components/TaskForm.vue';
 import TaskListControls from '../components/TaskListControls.vue';
-import {
-  taskState,
-  addTask,
-  updateTask,
-  deleteTask,
-  setTaskStatus,
-  setTaskPriority,
-} from '../store/tasks.js';
+import { useProjectsStore } from '../store/projects.js';
+import { useTasksStore } from '../store/tasks.js';
 import '../css/task-components.css';
 import '../css/task-list.css';
 
-const searchText = ref('');
-const selectedStatus = ref('all');
-const selectedPriority = ref('all');
-const sortOrder = ref('newest');
+const taskStore = useTasksStore();
+const projectStore = useProjectsStore();
+const {
+  tasks,
+  searchText,
+  selectedStatus,
+  selectedPriority,
+  selectedProject,
+  sortOrder,
+  onlyWithoutDueDate,
+  totalTasks,
+  completedTasks,
+  visibleTasks,
+} = storeToRefs(taskStore);
+const { projects, projectStats } = storeToRefs(projectStore);
+
 const showForm = ref(false);
 const editingId = ref(null);
+const newProjectTitle = ref('');
+const projectError = ref('');
 
-const completedCount = computed(() => taskState.tasks.filter((task) => task.status === 'done').length);
-const completedPercent = computed(() => {
-  if (!taskState.tasks.length) return 0;
-  return Math.round((completedCount.value / taskState.tasks.length) * 100);
-});
-
+const completedPercent = computed(() => (
+  totalTasks.value ? Math.round((completedTasks.value / totalTasks.value) * 100) : 0
+));
 const editingTask = computed(
-  () => taskState.tasks.find((task) => task.id === editingId.value) ?? null,
+  () => tasks.value.find((task) => task.id === editingId.value) ?? null,
+);
+const selectedProjectTitle = computed(
+  () => projectStore.projectTitle(selectedProject.value),
 );
 
-const visibleTasks = computed(() => {
-  const term = searchText.value.trim().toLocaleLowerCase('uk-UA');
-  const priorityWeight = { high: 3, medium: 2, low: 1 };
-
-  const result = taskState.tasks.filter((task) => {
-    const preview = `${task.title} ${task.description ?? ''}`.toLocaleLowerCase('uk-UA');
-    const matchesText = !term || preview.includes(term);
-    const matchesStatus = selectedStatus.value === 'all' || task.status === selectedStatus.value;
-    const matchesPriority = selectedPriority.value === 'all' || task.priority === selectedPriority.value;
-    return matchesText && matchesStatus && matchesPriority;
-  });
-
-  return result.sort((a, b) => {
-    if (sortOrder.value === 'title') {
-      return a.title.localeCompare(b.title, 'uk-UA') || a.id - b.id;
-    }
-
-    if (sortOrder.value === 'priority') {
-      return priorityWeight[b.priority] - priorityWeight[a.priority] || b.id - a.id;
-    }
-
-    if (sortOrder.value === 'dueDate') {
-      const first = a.dueDate || '9999-12-31';
-      const second = b.dueDate || '9999-12-31';
-      return first.localeCompare(second) || b.id - a.id;
-    }
-
-    return b.id - a.id;
-  });
-});
-
 function resetFilters() {
-  searchText.value = '';
-  selectedStatus.value = 'all';
-  selectedPriority.value = 'all';
-  sortOrder.value = 'newest';
+  taskStore.resetFilters();
 }
 
 function startCreate() {
@@ -86,21 +61,50 @@ function cancelForm() {
 }
 
 function saveTask(values) {
-  const saved = values.id === null ? addTask(values) : updateTask(values);
-  if (saved) {
-    cancelForm();
-  }
+  const saved = values.id === null
+    ? taskStore.addTask(values)
+    : taskStore.updateTask(values);
+  if (saved) cancelForm();
 }
 
 function handleDelete(id) {
-  const task = taskState.tasks.find((item) => item.id === id);
+  const task = tasks.value.find((item) => item.id === id);
   if (!task) return;
 
   const confirmed = window.confirm(`Видалити завдання «${task.title}»?`);
   if (!confirmed) return;
 
-  if (deleteTask(id) && editingId.value === id) {
+  if (taskStore.deleteTask(id) && editingId.value === id) {
     cancelForm();
+  }
+}
+
+function createProject() {
+  const result = projectStore.addProject(newProjectTitle.value);
+  if (result.error) {
+    projectError.value = result.error;
+    return;
+  }
+
+  newProjectTitle.value = '';
+  projectError.value = '';
+  taskStore.setProjectFilter(result.project.id);
+}
+
+function moveSelectedProjectToProgress() {
+  const count = tasks.value.filter(
+    (task) => task.projectId === selectedProject.value && task.status !== 'progress',
+  ).length;
+  if (!count) {
+    window.alert('Усі завдання цього проєкту вже мають статус «У роботі».');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Перевести ${count} завдань проєкту «${selectedProjectTitle.value}» у статус «У роботі»?`,
+  );
+  if (confirmed) {
+    taskStore.moveProjectTasksToProgress(selectedProject.value);
   }
 }
 </script>
@@ -113,16 +117,16 @@ function handleDelete(id) {
       <section class="tf3-hero">
         <div class="tf3-eyebrow">TASKFLOW / TASK MANAGER</div>
         <h1>Керування завданнями</h1>
-        <p>Створюйте, редагуйте, знаходьте, сортуйте та видаляйте завдання.</p>
+        <p>Спільний стан Pinia синхронізує завдання, фільтри та проєкти між сторінками.</p>
 
         <div class="tf3-stat-grid">
           <div class="tf3-stat">
             <span class="tf3-stat-label">Усього</span>
-            <strong>{{ taskState.tasks.length }}</strong>
+            <strong>{{ totalTasks }}</strong>
           </div>
           <div class="tf3-stat">
             <span class="tf3-stat-label">Виконано</span>
-            <strong>{{ completedCount }}</strong>
+            <strong>{{ completedTasks }}</strong>
           </div>
           <div class="tf3-stat">
             <span class="tf3-stat-label">Виконано</span>
@@ -135,15 +139,59 @@ function handleDelete(id) {
         </button>
       </section>
 
-      <TaskForm v-if="showForm" :key="editingId ?? 'new'" :task="editingTask" @save="saveTask" @cancel="cancelForm" />
+      <TaskForm
+        v-if="showForm"
+        :key="editingId ?? 'new'"
+        :task="editingTask"
+        :projects="projects"
+        @save="saveTask"
+        @cancel="cancelForm"
+      />
+
+      <section class="tf5-panel tf6-project-panel" aria-label="Проєкти">
+        <h2>Мої проєкти</h2>
+        <div class="tf6-project-list">
+          <div v-for="project in projectStats" :key="project.id" class="tf6-project-pill">
+            <span>{{ project.title }}</span>
+            <strong>{{ project.taskCount }}</strong>
+            <span class="tf6-project-progress">
+              {{ project.completionPercent }}% виконано
+            </span>
+          </div>
+        </div>
+
+        <form class="tf6-project-form" @submit.prevent="createProject">
+          <label>
+            Назва нового проєкту
+            <input
+              v-model="newProjectTitle"
+              type="text"
+              maxlength="40"
+              placeholder="Наприклад: Лабораторні"
+            />
+          </label>
+          <button type="submit" class="tf5-btn tf5-btn--primary">Створити проєкт</button>
+        </form>
+        <p v-if="projectError" class="tf5-error" role="alert">{{ projectError }}</p>
+      </section>
 
       <TaskListControls
         v-model:search="searchText"
         v-model:status="selectedStatus"
         v-model:priority="selectedPriority"
         v-model:sort="sortOrder"
+        v-model:project="selectedProject"
+        v-model:only-without-due-date="onlyWithoutDueDate"
+        :projects="projects"
         @reset="resetFilters"
       />
+
+      <div v-if="selectedProject !== 'all'" class="tf6-bulk-action">
+        <span>Проєкт: <strong>{{ selectedProjectTitle }}</strong></span>
+        <button type="button" class="tf5-btn" @click="moveSelectedProjectToProgress">
+          Усі завдання проєкту — «У роботі»
+        </button>
+      </div>
 
       <section class="tf3-section">
         <div class="tf3-section-heading">
@@ -152,7 +200,7 @@ function handleDelete(id) {
             <h2>Список завдань</h2>
           </div>
           <div class="tf3-counter">
-            Показано: {{ visibleTasks.length }} із {{ taskState.tasks.length }}
+            Показано: {{ visibleTasks.length }} із {{ totalTasks }}
           </div>
         </div>
 
@@ -161,8 +209,9 @@ function handleDelete(id) {
             v-for="task in visibleTasks"
             :key="task.id"
             :task="task"
-            @status-change="setTaskStatus"
-            @priority-change="setTaskPriority"
+            :project-title="projectStore.projectTitle(task.projectId)"
+            @status-change="taskStore.setTaskStatus"
+            @priority-change="taskStore.setTaskPriority"
             @edit="startEdit"
             @delete="handleDelete"
           />

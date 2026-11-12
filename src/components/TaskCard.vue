@@ -5,6 +5,8 @@ import PriorityBadge from './PriorityBadge.vue';
 
 const props = defineProps({
   task: { type: Object, required: true },
+  projectTitle: { type: String, default: 'Загальні' },
+  showManagementActions: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['status-change', 'priority-change', 'edit', 'delete']);
@@ -64,6 +66,7 @@ function changePriority() {
           <PriorityBadge :priority="task.priority" />
         </div>
         <div class="tf3-meta-date">Термін: {{ formattedDate }}</div>
+        <div class="tf3-meta-date">Проєкт: {{ projectTitle }}</div>
       </div>
 
       <div class="tf3-card-actions tf5-card-actions">
@@ -73,10 +76,20 @@ function changePriority() {
         <button type="button" class="tf3-action" @click="changePriority">
           Пріоритет
         </button>
-        <button type="button" class="tf3-action" @click="emit('edit', task.id)">
+        <button
+          v-if="showManagementActions"
+          type="button"
+          class="tf3-action"
+          @click="emit('edit', task.id)"
+        >
           Редагувати
         </button>
-        <button type="button" class="tf3-action tf5-danger" @click="emit('delete', task.id)">
+        <button
+          v-if="showManagementActions"
+          type="button"
+          class="tf3-action tf5-danger"
+          @click="emit('delete', task.id)"
+        >
           Видалити
         </button>
       </div>

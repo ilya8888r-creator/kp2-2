@@ -6,6 +6,9 @@ const props = defineProps({
   status: { type: String, default: 'all' },
   priority: { type: String, default: 'all' },
   sort: { type: String, default: 'newest' },
+  project: { type: String, default: 'all' },
+  projects: { type: Array, default: () => [] },
+  onlyWithoutDueDate: { type: Boolean, default: false },
 });
 
 const emit = defineEmits([
@@ -13,6 +16,8 @@ const emit = defineEmits([
   'update:status',
   'update:priority',
   'update:sort',
+  'update:project',
+  'update:onlyWithoutDueDate',
   'reset',
 ]);
 
@@ -62,6 +67,25 @@ const showClearSearch = computed(() => props.search.trim().length > 0);
           <option value="priority">За пріоритетом (високий перший)</option>
           <option value="dueDate">За терміном (найближчий перший)</option>
         </select>
+      </label>
+
+      <label>
+        Проєкт
+        <select :value="project" @change="emit('update:project', $event.target.value)">
+          <option value="all">Усі проєкти</option>
+          <option v-for="item in projects" :key="item.id" :value="item.id">
+            {{ item.title }}
+          </option>
+        </select>
+      </label>
+
+      <label class="tf6-checkbox">
+        <input
+          type="checkbox"
+          :checked="onlyWithoutDueDate"
+          @change="emit('update:onlyWithoutDueDate', $event.target.checked)"
+        />
+        Лише без терміну
       </label>
     </div>
 

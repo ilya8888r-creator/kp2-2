@@ -3,6 +3,7 @@ import { reactive, ref, watch } from 'vue';
 
 const props = defineProps({
   task: { type: Object, default: null },
+  projects: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['save', 'cancel']);
@@ -13,6 +14,7 @@ const form = reactive({
   status: 'todo',
   priority: 'medium',
   dueDate: '',
+  projectId: 'general',
 });
 
 const error = ref('');
@@ -25,6 +27,7 @@ watch(
     form.status = task?.status ?? 'todo';
     form.priority = task?.priority ?? 'medium';
     form.dueDate = task?.dueDate ?? '';
+    form.projectId = task?.projectId ?? 'general';
     error.value = '';
   },
   { immediate: true },
@@ -49,6 +52,11 @@ function submit() {
     return;
   }
 
+  if (!props.projects.some((project) => project.id === form.projectId)) {
+    error.value = 'Оберіть наявний проєкт.';
+    return;
+  }
+
   error.value = '';
   emit('save', {
     id: props.task?.id ?? null,
@@ -57,6 +65,7 @@ function submit() {
     status: form.status,
     priority: form.priority,
     dueDate: form.dueDate,
+    projectId: form.projectId,
   });
 }
 </script>
@@ -76,6 +85,15 @@ function submit() {
       </label>
 
       <div class="tf5-form-grid">
+        <label>
+          Проєкт
+          <select v-model="form.projectId">
+            <option v-for="project in projects" :key="project.id" :value="project.id">
+              {{ project.title }}
+            </option>
+          </select>
+        </label>
+
         <label>
           Статус
           <select v-model="form.status">
